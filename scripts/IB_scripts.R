@@ -10,63 +10,178 @@ library(HighFreq)
 ### Scripts for account information
 
 # library(IButils)
+# Install package *IBrokers2* from github:
+# devtools::install_github(repo="algoquant/IBrokers2")
 library(IBrokers2)
 
-# wipp
+# IButils query
 # IButils::flex_web_service(file = "C:/Develop/R/IBrokers/my_report.csv",
 #                  token = "12345678901234567890",
 #                  query = 123)
 
+# Open the IB connection
+ib_connect <- IBrokers2::twsConnect(port=7497)
+# Download account information from IB
+ib_account <- IBrokers::reqAccountUpdates(conn=ib_connect, acctCode="DI1207807")
+# Extract account balances
+balance_s <- ib_account[[1]]
+balance_s$AvailableFunds
+# Extract contract names, net positions, and profits and losses
+IBrokers::twsPortfolioValue(ib_account)
+
+### Not necessary:
+# Open the files for storing the account information
+data_dir <- "C:/Develop/data/ib_data"
+file_names <- file.path(data_dir, "acct_info.txt")
+file_connects <- file(file_names, open="w")
+# file_connects <- lapply(file_names, function(file_name) file(file_name, open="w"))
+
+foo <- IBrokers2::get_account(ib_connect=ib_connect, acctCode="DI1207807", file_connects=file_connects)
+
+ib_account <- IBrokers::.reqAccountUpdates(conn=ib_connect, subscribe=TRUE, acctCode="DI1207807")
+
 # Doesn't work
 # foo <- IBrokers2::reqExecutions(twsconn=ib_connect, ExecutionFilter=twsExecutionFilter)
 # foo <- IBrokers2::reqOpenOrders(ib_connect)
+
+# Close IB connection
+IBrokers2::twsDisconnect(ib_connect)
 
 
 
 ####################################
 ### Scripts for running a simple trading strategy in a callback loop:
 
-# Define the contract for trading
-con_tract <- IBrokers2::twsFuture(symbol="ES", exch="GLOBEX", expiry="201812")
+# Load the trading function written as an eWrapper:
+# source("C:/Develop/R/IBrokers2/R/trade_wrapper.R")
+
+
+# Define named lists for trading one contract
+con_tracts <- list(ES=IBrokers2::twsFuture(symbol="ES", exch="GLOBEX", expiry="201812"))
+con_tracts <- list(GBP=IBrokers2::twsFuture(symbol="GBP", exch="GLOBEX", expiry="201812"))
+trade_params <- list(ES=c(buy_spread=0.75, sell_spread=0.75, siz_e=1, lagg=2, lamb_da=0.1))
+
+# Define named lists for trading one contract and saving the others
+con_tracts <- list(ES=IBrokers2::twsFuture(symbol="ES", exch="GLOBEX", expiry="201812"),
+                   QM=IBrokers2::twsFuture(symbol="QM", exch="NYMEX", expiry="201901"),
+                   # GBP=IBrokers2::twsCurrency("GBP", currency="USD"),
+                   ZN=IBrokers2::twsFuture(symbol="ZN", exch="ECBOT", expiry="201812"))
+trade_params <- list(ES=c(buy_spread=0.75, sell_spread=0.75, siz_e=1, lagg=2, lamb_da=0.1), QM=NA, ZN=NA)
+# trade_params <- list(ES=NA, QM=NA, GBP=c(buy_spread=0.001, sell_spread=0.001, siz_e=5e4, lagg=0, lamb_da=0.1), ZN=NA)
+
 
 # The simple market-making strategy is defined as follows:
 #  Place limit buy order at previous bar Low price minus buy_spread,
 #  Place limit sell order at previous bar High price plus sell_spread.
 #
-# The strategy is defined inside the function realtimeBars() which
-# is part of an eWrapper.
+# The strategy is defined inside the function model_fun() which
+# is part of the eWrapper defined by trade_wrapper().
 # The user can customize this strategy by modifying the trading
-# code in the function realtimeBars().
+# code in the function model_fun().
 
-# Open the file for storing the bar data
+# Define trading model function
+
+# Open the files for storing the bar data
 data_dir <- "C:/Develop/data/ib_data"
-file_name <- file.path(data_dir, "ES_ohlc_live_11_02_18.csv")
-file_connect <- file(file_name, open="w")
+file_names <- file.path(data_dir, paste0(names(con_tracts), "_", format(Sys.time(), format="%m_%d_%Y_%H_%M"), ".csv"))
+file_connects <- lapply(file_names, function(file_name) file(file_name, open="w"))
 
-# Open the IB connection
+# Open the IB connection to TWS
 ib_connect <- IBrokers2::twsConnect(port=7497)
+# Open the IB connection to output file
+ib_connect <- file(file.path(data_dir, paste0("output_", format(Sys.time(), format="%m_%d_%Y_%H_%M"), ".csv")),
+                   open="w")
 
-# Run the strategy:
-IBrokers2::reqRealTimeBars(conn=ib_connect, useRTH=FALSE,
-                          Contract=con_tract, barSize="10",
-                          eventWrapper=trade_wrapper(1),
-                          CALLBACK=twsCALLBACK,
-                          file=file_connect,
-                          buy_spread=0.75, sell_spread=0.75)
+
+# Run the trading model (strategy):
+IBrokers2::trade_realtime(ib_connect=ib_connect,
+                          Contract=con_tracts,
+                          useRTH=FALSE,
+                          back_test=FALSE,
+                          eventWrapper=IBrokers2::trade_wrapper(ac_count="DI1207807",
+                                                                con_tracts=con_tracts,
+                                                                trade_params=trade_params,
+                                                                file_connects=file_connects,
+                                                                warm_up=10),
+                          CALLBACK=IBrokers2::call_back,
+                          # CALLBACK=IBrokers2::twsCALLBACK,
+                          file=file_connects)
+
+# Execute buy market order
+order_id <- IBrokers2::reqIds(ib_connect)
+ib_order <- IBrokers2::twsOrder(order_id, orderType="MKT", action="BUY", totalQuantity=10)
+IBrokers2::placeOrder(ib_connect, con_tracts[[1]], ib_order)
+
+# Execute sell limit order
+order_id <- IBrokers2::reqIds(ib_connect)
+ib_order <- IBrokers2::twsOrder(order_id, orderType="LMT", lmtPrice="1.285", action="SELL", totalQuantity=5e4)
+IBrokers2::placeOrder(ib_connect, con_tracts[["GBP"]], ib_order)
 
 
 # Close IB connection
 IBrokers2::twsDisconnect(ib_connect)
-close(file_connect)
+
+# Close data files
+for (file_connect in file_connects) close(file_connect)
+close(ib_connect)
 
 
 # IBrokers2::reqOpenOrders(ib_connect)
 
 
+# Read the data from file
+file_name <- "C:/Develop/data/ib_data/ES_ohlc_live11_02_2018_11_53.csv"
+price_s <- data.table::setDF(data.table::fread(file_name, sep=","))
+price_s <- xts::xts(price_s[, 2:6], as.POSIXct(price_s[, 1], origin="1970-01-01"))
+colnames(price_s) <- c("Open", "High", "Low", "Close", "Volume")
+# Plot dygraph
+library(dygraphs)
+dygraphs::dygraph(price_s[, 1:4], main="OHLC prices") %>% dyCandlestick()
 
 
 ####################################
-### Scripts for downloading market data from
+### Download market data for two contracts simultaneously
+### Interactive Brokers using package IBrokers.
+
+
+con_tracts <- list(es=IBrokers2::twsFuture(symbol="ES", exch="GLOBEX", expiry="201812"),
+                  tsy=IBrokers2::twsFuture(symbol="ZN",exch="ECBOT", expiry="201812"))
+
+# Open the file for storing the bar data
+data_dir <- "C:/Develop/data/ib_data"
+file_name <- file.path(data_dir, paste0("ES_ohlc_live_", format(Sys.time(), format="%m_%d_%Y_%H_%M"), ".csv"))
+file_connects <- file(file_name, open="w")
+# Open the IB connection
+ib_connect <- IBrokers2::twsConnect(port=7497)
+
+IBrokers2::reqRealTimeBars(conn=ib_connect,
+                           Contract=con_tracts,
+                           barSize="1", useRTH=FALSE,
+                           eventWrapper=eWrapper.RealTimeBars.CSV(NROW(con_tracts)),
+                           file=file_connects)
+
+# Close IB connection
+IBrokers2::twsDisconnect(ib_connect)
+close(file_connects)
+
+library(data.table)
+price_s <- data.table::fread(file_name)
+price_s <- xts::xts(price_s[, paste0("V", 2:6)],
+                    as.POSIXct.numeric(as.numeric(price_s[, V1]), tz="America/New_York", origin="1970-01-01"))
+colnames(price_s) <- c("Open", "High", "Low", "Close", "Volume")
+# Plot OHLC data in x11 window
+x11()
+chart_Series(x=price_s, TA="add_Vo()",
+             name="S&P500 ESZ8 futures")
+# Plot dygraph
+library(dygraphs)
+dygraphs::dygraph(price_s[, 1:4], main="S&P500 ESZ8 futures") %>%
+  dyCandlestick()
+
+
+
+####################################
+### Download market data from
 ### Interactive Brokers using package IBrokers.
 
 # devtools::install_github(repo="joshuaulrich/IBrokers")
@@ -182,10 +297,11 @@ reqRealTimeBars(conn=raw_connect,
                 eventWrapper=eWrapper.RealTimeBars.CSV(1),
                 file=file_connect)
 
-# close file for bar data
+# Close file for bar data
 close(file_connect)
-# close file with raw data
+# Close file with raw data
 twsDisconnect(raw_connect)
+
 
 
 

@@ -1,0 +1,242 @@
+############
+### ToDo list for package IBrokers2: Executing Real Time Trading Strategies Via the API of Interactive Brokers
+
+### Scripts for building packages
+
+## Steps for creating a package called my_package, which contains Rcpp code:
+1. Create empty package directory with the R command: Rcpp::Rcpp.package.skeleton()
+2. In the R sub-directory of the new package, create a file called my_package.R and add the header:
+	#' @useDynLib my_package
+	#' @importFrom Rcpp evalCpp
+	#' @exportPattern "^[[:alpha:]]+"
+Add your R functions below the above header.
+3. In the Build menu, Clean and rebuild
+
+
+## Scripts for installing packages:
+
+Install package from source on local drive
+	install.packages(pkgs="C:/Develop/R/IBrokers2", repos=NULL, type="source")
+Install package from source on local drive using R CMD
+	R CMD INSTALL C:\Develop\R\IBrokers2
+Install package from github
+	devtools::install_github(repo="algoquant/IBrokers2", force=TRUE)
+Build vignette package reference manual from *.Rd files
+	system("R CMD Rd2pdf C:/Develop/R/IBrokers2")
+	cd C:\Develop\R\IBrokers2\vignettes
+	R CMD Rd2pdf C:\Develop\R\IBrokers2\
+
+
+
+### Comments and package analysis
+
+# Named lists of numeric codes of IB TWS messages (stored as named lists)
+IBrokers::.twsIncomingMSG
+
+
+### Notes
+
++ [ ] Open IB demo account
+https://www.interactivebrokers.com/en/index.php?f=1286
+
++ [ ] Trade IB using Python  configure IB account
+https://medium.com/auquan/algorithmic-trading-system-development-1a5a200af260
+
+
+
+### tasks to-do
+
++ [ ] Create a clone of reqOpenOrders() to write to file
+
++ [ ] In realtimeBars() check for trade status using reqOpenOrders() instead of copying tradeID
+https://stackoverflow.com/questions/34703679/r-ibrokers-reqopenorders-hangs
+
++ [ ] In create_ewrapper() modify the handlers openOrder() and openOrderEnd() for reqExecutions and reqOpenOrders
+
++ [x] Pass ac_count argument with acctCode into trade_wrapper()
+
++ [x] Call reqAccountUpdates() inside realtimeBars() to download net positions from IB
+
++ [x] In realtimeBars() and model_fun() add argument ib_connect
+In processMsg() pass argument twsconn into eWrapper$realtimeBars()
+
++ [x] In trade_realtime() rename the argument playback to back_test (with default FALSE), for backtesting trading strategies using 5-second bar data
+
++ [x] Create a clone of twsCALLBACK() called call_back() - rename argument playback to back_test, with default FALSE
+
++ [ ] In create_ewrapper() modify openOrder() to write to the da_ta environment and to a file
+
++ [ ] In realtimeBars() calculate the trailing volatilities and z-scores
+
++ [ ] In trade_wrapper() add inventory limit: if inventory reaches its limit then stop placing orders in that direction
+Add invent_limit to argument trade_params in trade_wrapper().
+
++ [ ] Create a clone of reqAccountUpdates() called get_account()
+
++ [ ] Create sub-portfolios and place trades into sub-portfolios: use modelCode ?
+https://www.interactivebrokers.com/en/software/tws/usersguidebook/mosaic/portfoliobuilder.htm
+interactivebrokers sub portfolios
+
++ [x] Move argument lamb_da to argument vector trade_params
+
++ [x] In trade_wrapper() add spread bias to the limit prices if there is momentum
+For example, use EWMA crossover.
+Or if there are two consecutive trades in the same direction.
+
++ [x] In trade_wrapper() add argument warm_up for warmup period: don't trade in warmup period
+Rename argument fac_tor to warm_up.
+
++ [x] Add argument trade_params to model_fun()
+
++ [x] In trade_wrapper() get rid of limit_prices
+
++ [x] In trade_wrapper() add ability to trade with a time lag
+Create a matrix of past limit_prices, and update the limit_prices in model_fun().
+Set the current limit prices to past limit_prices.
+
++ [x] Rename limit_prices to trade_params, and add lagg parameter to trade_params
+
++ [ ] Create a shiny app as a front end for trading via IBrokers2: 
+C:\Develop\R\IBrokers2\scripts\app_ibtrading.R
+Every time model parameters are updated, the shiny app should interrupt the trading model in R and then restart it with the new parameters.
+Use on.exit() to remember the trade IDs.
+I've been trying to find a solution for this problem, but only stumbled into vague mentions.
+The goal is to receive live data from a trading platform with IBrokers package, accumulate it, do computations with it periodically and as the user changes reactive inputs.
+The package uses subscribe-callback mechanism to process new data. Once the data is requested, the function goes to a while(TRUE) loop and passes incoming messages to a callback function, where it can be written to a data frame, until stopped. Although it is not computationally intensive, it occupies the session.
+Is it possible to update the data on a background and periodically do the calculations with it? I suspect it somehow involves multiple R sessions, since R is single threaded. I would appreciate any tips.
+https://groups.google.com/forum/#!topic/shiny-discuss/n11-mnBYXQc
+https://github.com/ksavin/intrinio
+https://www.linkedin.com/in/ksavin/
+https://gist.github.com/trestletech/8608815
+https://stackoverflow.com/questions/21282228/update-plot-within-observer-loop-in-shiny-application
+
++ [ ] Remove Depends: and Imports: from DESCRIPTION ?
+
++ [ ] Modify IBrokers2 startup message in zzz.R
+
++ [ ] Load into eWrapper buffer the state variables: size of open orders, positions, cumulative PnL
+IBrokers2::reqOpenOrders
+function(twsconn) {
+  .reqOpenOrders(twsconn)
+  con <- twsconn[[1]]
+  eW  <- eWrapper()
+  while(TRUE) {
+    socketSelect(list(con), FALSE, NULL)
+    curMsg <- readBin(con, character(), 1L)
+    processMsg(curMsg, con, eW)
+  }
+}
+
++ [ ] Print to console status of the eWrapper data buffer
+
++ [ ] Add sounds when trades are placed
+https://stackoverflow.com/questions/3365657/is-there-a-way-to-make-r-beep-play-a-sound-at-the-end-of-a-script
+https://shirinsplayground.netlify.com/2018/06/text_to_speech_r/
+https://sourceforge.net/projects/espeak/files/espeak/
+http://code.markedmondson.me/googleLanguageR/articles/text-to-speech.html
+https://github.com/seankross/ari
+cd C:\Program Files (x86)\espeak\command_line
+espeak.exe -v english-us -s 100 "Buy"
+
++ [x] Increase TWS Java heap size to 2.5 GB in file C:\Jts\tws.vmoptions
+-Xmx2500m
+https://www.interactivebrokers.com/en/software/tws/usersguidebook/priceriskanalytics/custommemory.htm
+https://ibkr.info/article/2170
+
++ [x] In trade_wrapper() add spread factor for limit price, proportional to the trailing volatility
+
++ [x] Create clone of reqRealTimeBars() called trade_realtime()
+
++ [x] In create_ewrapper() rename .Data to da_ta
+
++ [x] Use assign() instead of "<<-" - actually revert back to "<<-"
+
++ [x] In trade_realtime() rename con to sock_et, and conn to ib_connect, and twsconn to ib_connect
+
++ [x] In create_ewrapper() rename assign.Data() to as_sign()
+
++ [x] Pass con_tracts and limit_prices arguments into trade_wrapper(), and pass contract_id argument into model_fun()
+Trade only those contracts which have non-NA limit_prices.
+
++ [x] Download data for two contracts simultaneously
+
++ [x] Change the trading frequency - realtimeBars query in IB API is fixed to 5 seconds
+
++ [x] In realtimeBars() add to col_index the instrument ID column
+
++ [x] Pass into IBrokers2::reqRealTimeBars() a named list of contracts called con_tracts (even for a single contract)
+
++ [x] In trade_wrapper(), pass a vector of contract (instrument) names called name_s, instead of the integer n_instr
+Add column names to bar_data.
+Add argument file_connects, and write the column names as headers to data files.
+Remove the dots argument of trade_wrapper().
+
++ [x] Download real-time bars for multiple instruments using reqRealTimeBars() and eWrapper.RealTimeBars.CSV(), and compare the data
+
++ [ ] Every 10 counts, save all the bar_data, instead of every row, or save only 10 rows of bar_data at a time to a file, instead of every row. 
+
++ [ ] Download messages and parse them with reqMktData(tws, equity1, CALLBACK=NULL, file=fn)
+http://r.789695.n4.nabble.com/Interactive-Brokers-td3668170.html
+
++ [ ] Create new order type:
+https://stackoverflow.com/questions/46482300/r-ibrokers-interactive-brokers-api
+
++ [ ] Run reqExecutions():
+https://stackoverflow.com/questions/35559742/reqexecutions-ibrokers-package
+http://r.789695.n4.nabble.com/IBrokers-order-status-td4562387.html
+http://r.789695.n4.nabble.com/Confirm-orders-in-TWS-Interactive-Brokers-td3785506.html
+
++ [ ] Adapt iBrokers code from:
+https://www.quantopian.com/posts/ib-api
+https://stackoverflow.com/questions/35559742/reqexecutions-ibrokers-package
+http://r.789695.n4.nabble.com/Confirm-orders-in-TWS-Interactive-Brokers-td3785506.html
+
++ [ ] Answer the questions:
+https://stackoverflow.com/questions/39713543/message-management-using-ewrapper-and-twscallback-in-ibrokers
+https://stackoverflow.com/questions/27254131/ibrokers-queueing-up-an-order-using-r
+
++ [ ] Reply to / comment on:
+https://stackoverflow.com/questions/44582053/ibrokers-quantstrat-live-implementation
+
++ [ ] Answer the question:
+https://stackoverflow.com/questions/21442158/ibrokers-data-persistence
+
++ [ ] Add new order type to IBrokers:
+https://stackoverflow.com/questions/46482300/r-ibrokers-interactive-brokers-api
+
++ [ ] Adapt from autotrade by Phillip Guerra: uses package reticulate with Python for Interactive Brokers
+https://www.pcppresentation.com/
+https://github.com/PhilGuerra/autotrade
+https://github.com/PhilGuerra/autotrade/commits?author=PhilGuerra
+Guerra autotrade RFinance Chicago 2018.pdf
+C:/Research/R/Tutorials/Guerra_automated_trading_with_r
+
++ [ ] Adapt from Santosh Srinivas: Interactive Brokers with Python, R and package reticulate
+https://www.santoshsrinivas.com/amicable-interactive-data-analysis-using-pythoth-and-r-using-reticulate/
+
+
+### tasks finished
+
+
++ [x] In realtimeBars() of trade_wrapper(): copy bar data into buffer in the event wrapper environment
+
++ [x] Convert bar_data into list of matrices or data frames, instead of a list of xts series
+
++ [x] Rewrite trade_wrapper()
+Rename Wrapper_new() to create_ewrapper().
+Remove redundant accessor function calls.
+Define model function inside trade_wrapper() and pass model parameters into trade_wrapper() through the dots argument.
+
++ [x] Create IBrokers2 project directory in RStudio
+
++ [x] Pass the trading parameters buy_spread and sell_spread into the dots of realtimeBars()
+
++ [x] Adapt Interactive Brokers API script from: actually nothing there to adapt
+C:\Develop\R\IBrokers\Sherrington IBrokers scripts.pdf
+C:\Develop\R\IBrokers\Yadav IBrokers scripts.pdf
+
+
+
+
+### tasks deprecated
+
